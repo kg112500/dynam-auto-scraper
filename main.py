@@ -87,21 +87,61 @@ def get_data_via_js(driver):
         return pd.DataFrame(raw[1:], columns=raw[0])
     except: return None
 
-def update_google_sheet(df):
-    print("Googleスプレッドシート更新中...")
+def update_google_sheet(new_df):
+    print("\nGoogleスプレッドシートへ書き込みを開始します...")
     try:
+        # 1. 認証とシートを開く
         key_json = os.environ.get('GCP_KEY_JSON')
-        if not key_json: raise ValueError("キーが見つかりません")
+        if not key_json: raise ValueError("環境変数 GCP_KEY_JSON が設定されていません")
         
         creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(key_json), ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive'])
         client = gspread.authorize(creds)
-        worksheet = client.open_by_key(SPREADSHEET_KEY).sheet1
+        sh = client.open_by_key(SPREADSHEET_KEY)
+        worksheet = sh.sheet1 
+
+        # 2. 既存のデータをすべて読み込む
+        existing_data = worksheet.get_all_values()
+        
+        # 既存データがある場合、DataFrameに変換
+        if existing_data:
+            headers = existing_data[0]
+            existing_df = pd.DataFrame(existing_data[1:], columns=headers)
+            print(f"既存データ: {len(existing_df)} 件を読み込みました。")
+        else:
+            existing_df = pd.DataFrame()
+            print("既存データはありません。")
+
+        # 3. 新旧データを結合 (Concat)
+        # カラム名が一致しているか確認しつつ結合
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        # 4. 重複を削除 (日付と台番号が同じなら、重複とみなして1つ残す)
+        # ※もし「台番号」列がない場合は、全列を見て重複削除します
+        if "日付" in combined_df.columns and "台番号" in combined_df.columns:
+            before_len = len(combined_df)
+            combined_df = combined_df.drop_duplicates(subset=['日付', '台番号'], keep='last')
+            print(f"重複削除: {before_len - len(combined_df)} 件をカットしました。")
+        else:
+            combined_df = combined_df.drop_duplicates(keep='last')
+
+        # 5. 日付順に並び替え (オプション: 新しい日付が下に来るように)
+        if "日付" in combined_df.columns:
+            combined_df["日付"] = pd.to_datetime(combined_df["日付"], errors='coerce')
+            combined_df = combined_df.sort_values("日付").dropna(subset=["日付"])
+            combined_df["日付"] = combined_df["日付"].dt.strftime('%Y/%m/%d') # 文字列に戻す
+
+        # 6. 書き込み (一度クリアしてから全データを書き戻す)
         worksheet.clear()
-        df = df.fillna("")
-        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-        print("✅ 更新完了！")
+        
+        # NaNを空文字に変換
+        combined_df = combined_df.fillna("")
+        
+        # データ書き込み
+        worksheet.update([combined_df.columns.values.tolist()] + combined_df.values.tolist())
+        print(f"✅ 更新完了！ 合計データ数: {len(combined_df)} 件")
+        
     except Exception as e:
-        print(f"❌ エラー: {e}")
+        print(f"❌ スプレッドシート更新エラー: {e}")
 
 def main():
     driver = setup_driver()
@@ -136,3 +176,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
