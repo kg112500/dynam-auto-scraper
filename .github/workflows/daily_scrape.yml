@@ -2,8 +2,8 @@ name: Daily Scrape
 
 on:
   schedule:
-    # 毎日 23:30 (日本時間) に実行
-    - cron: '30 14 * * *'
+   # UTC 23:00 = 日本時間 翌08:00
+    - cron: '0 23 * * *'
   workflow_dispatch: # 手動実行ボタンも有効化
 
 jobs:
