@@ -1,0 +1,29 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    # 毎日 23:30 (日本時間) に実行
+    - cron: '30 14 * * *'
+  workflow_dispatch: # 手動実行ボタンも有効化
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Python setup
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@latest
+        
+      - name: Install libraries
+        run: pip install -r requirements.txt
+        
+      - name: Run script
+        env:
+          GCP_KEY_JSON: ${{ secrets.GCP_KEY_JSON }}
+        run: python main.py
