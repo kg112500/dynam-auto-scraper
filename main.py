@@ -99,50 +99,67 @@ def update_google_sheet(new_df):
         sh = client.open_by_key(SPREADSHEET_KEY)
         worksheet = sh.sheet1 
 
-        # 2. 既存のデータをすべて読み込む
+        # 2. 既存のデータを読み込み
         existing_data = worksheet.get_all_values()
-        
-        # 既存データがある場合、DataFrameに変換
         if existing_data:
-            headers = existing_data[0]
-            existing_df = pd.DataFrame(existing_data[1:], columns=headers)
-            print(f"既存データ: {len(existing_df)} 件を読み込みました。")
+            existing_df = pd.DataFrame(existing_data[1:], columns=existing_data[0])
         else:
             existing_df = pd.DataFrame()
-            print("既存データはありません。")
 
-        # 3. 新旧データを結合 (Concat)
-        # カラム名が一致しているか確認しつつ結合
+        # 3. 新旧データを結合
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
 
-        # 4. 重複を削除 (日付と台番号が同じなら、重複とみなして1つ残す)
-        # ※もし「台番号」列がない場合は、全列を見て重複削除します
+        # 4. 重複削除
         if "日付" in combined_df.columns and "台番号" in combined_df.columns:
-            before_len = len(combined_df)
             combined_df = combined_df.drop_duplicates(subset=['日付', '台番号'], keep='last')
-            print(f"重複削除: {before_len - len(combined_df)} 件をカットしました。")
         else:
             combined_df = combined_df.drop_duplicates(keep='last')
 
-        # 5. 日付順に並び替え (オプション: 新しい日付が下に来るように)
+        # 5. 日付でソート
         if "日付" in combined_df.columns:
             combined_df["日付"] = pd.to_datetime(combined_df["日付"], errors='coerce')
             combined_df = combined_df.sort_values("日付").dropna(subset=["日付"])
-            combined_df["日付"] = combined_df["日付"].dt.strftime('%Y/%m/%d') # 文字列に戻す
+            # 日付を文字列に戻す (YYYY/MM/DD形式)
+            combined_df["日付"] = combined_df["日付"].dt.strftime('%Y/%m/%d')
 
-        # 6. 書き込み (一度クリアしてから全データを書き戻す)
+        # --- ★ここが重要: 数値カラムを正しく数値型(int)に変換する ---
+        # これをやらないと、スプレッドシート側で文字列として扱われ ' が付きます
+        numeric_cols = ["台番号", "総差枚", "差枚", "G数", "回転数"] # 変換したい列名
+        for col in combined_df.columns:
+            # 列名の一部に numeric_cols のいずれかが含まれていれば変換対象にする
+            if any(target in col for target in numeric_cols):
+                try:
+                    # カンマ削除 -> 数値化 (エラーなら0) -> 整数化
+                    combined_df[col] = (
+                        combined_df[col]
+                        .astype(str)
+                        .str.replace(",", "")
+                        .str.replace("+", "")
+                        .str.strip()
+                    )
+                    combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce').fillna(0).astype(int)
+                except Exception as e:
+                    print(f"Warning: {col} の数値変換に失敗しました ({e})")
+        # -------------------------------------------------------
+
+        # 6. 書き込み
         worksheet.clear()
-        
-        # NaNを空文字に変換
         combined_df = combined_df.fillna("")
         
-        # データ書き込み
-        worksheet.update([combined_df.columns.values.tolist()] + combined_df.values.tolist())
+        # ★ここも重要: value_input_option='USER_ENTERED' を指定
+        # これにより、文字列の日付もスプレッドシート側で自動的に日付形式として認識されます
+        data_to_write = [combined_df.columns.values.tolist()] + combined_df.values.tolist()
+        
+        worksheet.update(
+            range_name='A1', 
+            values=data_to_write, 
+            value_input_option='USER_ENTERED'
+        )
+        
         print(f"✅ 更新完了！ 合計データ数: {len(combined_df)} 件")
         
     except Exception as e:
         print(f"❌ スプレッドシート更新エラー: {e}")
-
 def main():
     driver = setup_driver()
     try:
@@ -176,6 +193,7 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
 
