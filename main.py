@@ -19,7 +19,7 @@ SPREADSHEET_KEY = "1SEDGQLHGRN0rnXgLvP7wNzUuch6oxs9W4AvsavTagKM"
 # ----------------------------------------
 
 LIST_URL = "https://min-repo.com/tag/%e3%83%80%e3%82%a4%e3%83%8a%e3%83%a0%e6%bb%8b%e8%b3%80%e5%bd%a6%e6%a0%b9%e5%ba%97/"
-MAX_PAGES = 3
+MAX_PAGES = 188
 
 def setup_driver():
     options = webdriver.ChromeOptions()
@@ -193,6 +193,7 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
 
