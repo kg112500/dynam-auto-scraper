@@ -110,44 +110,44 @@ def update_google_sheet(new_df):
         combined_df = pd.concat([existing_df, new_df], ignore_index=True)
 
         # 4. 重複削除
-        if "日付" in combined_df.columns and "台番号" in combined_df.columns:
-            combined_df = combined_df.drop_duplicates(subset=['日付', '台番号'], keep='last')
+        # ★修正: 「台番号」を「台番」に変更しました
+        if "日付" in combined_df.columns and "台番" in combined_df.columns:
+            combined_df = combined_df.drop_duplicates(subset=['日付', '台番'], keep='last')
+            print("日付と台番を基準に重複を削除しました。")
         else:
             combined_df = combined_df.drop_duplicates(keep='last')
+            print("完全一致の行のみ重複削除しました（列名が見つからない場合の予備動作）。")
 
         # 5. 日付でソート
         if "日付" in combined_df.columns:
             combined_df["日付"] = pd.to_datetime(combined_df["日付"], errors='coerce')
             combined_df = combined_df.sort_values("日付").dropna(subset=["日付"])
-            # 日付を文字列に戻す (YYYY/MM/DD形式)
             combined_df["日付"] = combined_df["日付"].dt.strftime('%Y/%m/%d')
 
-        # --- ★ここが重要: 数値カラムを正しく数値型(int)に変換する ---
-        # これをやらないと、スプレッドシート側で文字列として扱われ ' が付きます
-        numeric_cols = ["台番号", "総差枚", "差枚", "G数", "回転数"] # 変換したい列名
+        # 6. 数値カラムを正しく数値型(int)に変換する
+        # ★修正: 「台番」「出率」などのパターンも拾えるように追加しました
+        numeric_cols = ["台番号", "台番", "総差枚", "差枚", "G数", "回転数", "出率"]
         for col in combined_df.columns:
-            # 列名の一部に numeric_cols のいずれかが含まれていれば変換対象にする
             if any(target in col for target in numeric_cols):
                 try:
-                    # カンマ削除 -> 数値化 (エラーなら0) -> 整数化
                     combined_df[col] = (
                         combined_df[col]
                         .astype(str)
                         .str.replace(",", "")
                         .str.replace("+", "")
+                        .str.replace("%", "") # 出率の%記号対策
                         .str.strip()
                     )
-                    combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce').fillna(0).astype(int)
+                    # 出率が小数の場合を考慮して float にしてから int にするなどの工夫が必要な場合は調整
+                    # 基本は数値化してエラーは0にする
+                    combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce').fillna(0)
                 except Exception as e:
                     print(f"Warning: {col} の数値変換に失敗しました ({e})")
-        # -------------------------------------------------------
 
-        # 6. 書き込み
+        # 7. 書き込み
         worksheet.clear()
         combined_df = combined_df.fillna("")
         
-        # ★ここも重要: value_input_option='USER_ENTERED' を指定
-        # これにより、文字列の日付もスプレッドシート側で自動的に日付形式として認識されます
         data_to_write = [combined_df.columns.values.tolist()] + combined_df.values.tolist()
         
         worksheet.update(
@@ -193,6 +193,7 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 
 
